@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import Home from "./pages/Home";
 import Player from "./pages/Player";
@@ -16,9 +16,44 @@ export type ViewState =
     };
 
 export default function App() {
-  const [state, setState] = useState<ViewState>({ screen: "home" });
+const [state, setState] = useState<ViewState>({ screen: "home" });
   const [globalError, setGlobalError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [bootingFromUrl, setBootingFromUrl] = useState(false);
+
+  useEffect(() => {
+    // Direct link support: /player?list=PLAYLIST_ID (or full playlist url encoded)
+    const params = new URLSearchParams(window.location.search);
+    const raw = params.get("list");
+    if (!raw) return;
+
+    let playlistId = "";
+    const trimmed = raw.trim();
+
+    try {
+      // if it's a URL
+      if (trimmed.startsWith("http")) {
+        const u = new URL(trimmed);
+        playlistId = u.searchParams.get("list") || "";
+      } else {
+        // if it contains list=... anywhere
+        const m = trimmed.match(/[?&]list=([^&]+)/i);
+        playlistId = m ? decodeURIComponent(m[1]) : trimmed;
+      }
+    } catch {
+      const m = trimmed.match(/[?&]list=([^&]+)/i);
+      playlistId = m ? decodeURIComponent(m[1]) : trimmed;
+    }
+
+    if (!playlistId) return;
+
+    setBootingFromUrl(true);
+    handleShuffle(`https://www.youtube.com/playlist?list=${playlistId}`).finally(() => {
+      setBootingFromUrl(false);
+    });
+
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const bgOrbs = useMemo(() => {
     return Array.from({ length: 7 }).map((_, i) => ({
@@ -63,8 +98,7 @@ export default function App() {
 
   function goHome() {
     setGlobalError(null);
-    setIsLoading(false);
-    setState({ screen: "home" });
+    window.location.href = "/";
   }
 
   function setCurrentByVideoId(videoId: string) {
@@ -137,6 +171,18 @@ export default function App() {
     // On reshuffle we restart from the first video of the new order
     setState({ ...state, shuffledIds: newOrder, currentIndex: 0 });
   }
+  const isDirectPlayerLink = (() => {
+    try {
+      const p = new URLSearchParams(window.location.search);
+      return window.location.pathname.startsWith("/player") && Boolean(p.get("list"));
+    } catch {
+      return false;
+    }
+  })();
+
+  if (state.screen === "home" && isDirectPlayerLink && (bootingFromUrl || isLoading)) {
+    return <LoadingScreen />;
+  }
 
   return (
     <div className="min-h-screen relative overflow-hidden">
@@ -179,7 +225,19 @@ export default function App() {
               transition={{ duration: 0.25 }}
               className="mt-10"
             >
-              <Home onShuffle={handleShuffle} isLoading={isLoading} />
+              <Home onShuffle={(url) => {
+  const trimmed = url.trim();
+  let playlistId = "";
+  try {
+    const u = new URL(trimmed);
+    playlistId = u.searchParams.get("list") || "";
+  } catch {
+    const m = trimmed.match(/[?&]list=([^&]+)/i);
+    playlistId = m ? decodeURIComponent(m[1]) : trimmed;
+  }
+  if (!playlistId) return;
+  window.location.href = `/player?list=${encodeURIComponent(playlistId)}`;
+}} isLoading={isLoading} />
             </motion.div>
           ) : (
             <motion.div
@@ -222,3 +280,25 @@ function shuffleArray<T>(input: T[]): T[] {
 
 
 
+
+
+function LoadingScreen() {
+  return (
+    <div className="min-h-screen relative overflow-hidden">
+      <div className="absolute inset-0 -z-20">
+        <div className="absolute inset-0 bg-gradient-to-b from-neutral-950 via-neutral-950 to-black" />
+        <div className="absolute inset-0 opacity-70 bg-[radial-gradient(circle_at_15%_10%,rgba(236,72,153,0.28),transparent_45%),radial-gradient(circle_at_80%_15%,rgba(251,146,60,0.20),transparent_45%),radial-gradient(circle_at_60%_90%,rgba(139,92,246,0.22),transparent_50%)]" />
+      </div>
+
+      <div className="min-h-screen flex flex-col items-center justify-center px-6 text-center">
+        <div className="relative">
+          <div className="h-16 w-16 rounded-full border border-white/10 bg-white/5 backdrop-blur-glass shadow-glass grid place-items-center">
+            <div className="h-9 w-9 rounded-full border-2 border-white/30 border-t-transparent animate-spin" />
+          </div>
+          <div className="pointer-events-none absolute -inset-7 rounded-full opacity-50 blur-2xl bg-[radial-gradient(circle_at_30%_30%,rgba(255,90,189,0.35),transparent_55%),radial-gradient(circle_at_70%_70%,rgba(165,104,255,0.30),transparent_55%),radial-gradient(circle_at_60%_40%,rgba(255,138,76,0.22),transparent_55%)]" />
+        </div>
+        <div className="mt-5 text-sm tracking-wide text-white/80">Loading...</div>
+      </div>
+    </div>
+  );
+}

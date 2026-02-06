@@ -40,6 +40,7 @@ function loadYouTubeIframeApi(): Promise<void> {
 export function useYouTubeIframe(videoId: string, options?: Options): PlayerApi {
   const mountRef = useRef<HTMLDivElement>(null);
   const playerRef = useRef<any>(null);
+  const pendingVideoIdRef = useRef<string | null>(null);
   const onEndedRef = useRef(options?.onEnded);
   const onErrorRef = useRef(options?.onError);
 
@@ -52,11 +53,11 @@ export function useYouTubeIframe(videoId: string, options?: Options): PlayerApi 
   }, [options?.onEnded, options?.onError]);
 
   useEffect(() => {
-    let cancelled = false;
-
     async function init() {
+      // Wait until we have a valid videoId to avoid YouTube loading an unexpected video.
+      if (!videoId) return;
       await loadYouTubeIframeApi();
-      if (cancelled || !mountRef.current) return;
+      if (!mountRef.current) return;
 
       if (playerRef.current) return;
 
@@ -70,9 +71,15 @@ export function useYouTubeIframe(videoId: string, options?: Options): PlayerApi 
         },
         events: {
           onReady: () => {
-            if (cancelled) return;
             setIsReady(true);
-            setIsPlaying(true);
+            // If a videoId was requested before the player was ready, load it now.
+            const pending = pendingVideoIdRef.current;
+            if (pending) {
+              pendingVideoIdRef.current = null;
+              try {
+                playerRef.current?.loadVideoById(pending);
+              } catch {}
+            }
           },
           onStateChange: (e: any) => {
             if (e.data === 1) setIsPlaying(true);
@@ -89,8 +96,11 @@ export function useYouTubeIframe(videoId: string, options?: Options): PlayerApi 
 
     init();
 
+    // no cleanup here: we destroy the player only on unmount
+  }, [videoId]);
+
+  useEffect(() => {
     return () => {
-      cancelled = true;
       try {
         playerRef.current?.destroy();
       } catch {}
@@ -98,11 +108,26 @@ export function useYouTubeIframe(videoId: string, options?: Options): PlayerApi 
   }, []);
 
   useEffect(() => {
+    if (!videoId) return;
     if (!playerRef.current) return;
+
+    // If the player isn\'t ready yet, remember the requested videoId.
+    if (!isReady) {
+      pendingVideoIdRef.current = videoId;
+      return;
+    }
+
     try {
-      playerRef.current.loadVideoById(videoId);
-    } catch {}
-  }, [videoId]);
+      const current = playerRef.current?.getVideoData?.()?.video_id as string | undefined;
+      if (current !== videoId) {
+        playerRef.current.loadVideoById(videoId);
+      }
+    } catch {
+      try {
+        playerRef.current.loadVideoById(videoId);
+      } catch {}
+    }
+  }, [videoId, isReady]);
 
   const api = useMemo<PlayerApi>(() => {
     return {
