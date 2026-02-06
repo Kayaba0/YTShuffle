@@ -3,9 +3,9 @@
 UI dark + glassmorphism per fare shuffle di una playlist YouTube e riprodurre i video in ordine casuale.
 
 
-
-```bash
 [Link Text](https://ytshuffle.vercel.app/)
+```bash
+
 ```
 
 ## Setup
