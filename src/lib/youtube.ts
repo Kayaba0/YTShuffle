@@ -111,10 +111,21 @@ export async function fetchPlaylistItems(playlistId: string): Promise<PlaylistIt
     if (!pageToken) break;
   }
 
-  // Salva cache solo se abbiamo risultati
-  if (out.length > 0) writeCache(out);
+  // Deduplica per videoId (alcune playlist possono contenere duplicati)
+  const seen = new Set<string>();
+  const uniqueOut: PlaylistItem[] = [];
+  for (const it of out) {
+    if (uniqueOut.length >= maxItems) break;
+    if (!it?.videoId) continue;
+    if (seen.has(it.videoId)) continue;
+    seen.add(it.videoId);
+    uniqueOut.push(it);
+  }
 
-  return out;
+  // Salva cache solo se abbiamo risultati
+  if (uniqueOut.length > 0) writeCache(uniqueOut);
+
+  return uniqueOut;
 }
 
 

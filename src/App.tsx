@@ -84,8 +84,8 @@ const [state, setState] = useState<ViewState>({ screen: "home" });
         return;
       }
 
-      const videoIds = items.map((x) => x.videoId);
-      const shuffled = shuffleArray(videoIds);
+      const uniqueVideoIds = Array.from(new Set(items.map((x) => x.videoId)));
+      const shuffled = shuffleArray(uniqueVideoIds);
 
       setState({ screen: "player", playlistId, items, shuffledIds: shuffled, currentIndex: 0 });
       setIsLoading(false);
