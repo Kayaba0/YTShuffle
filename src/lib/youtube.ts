@@ -17,17 +17,51 @@ export function parsePlaylistIdFromUrl(input: string): string | null {
   }
 }
 
+
 export async function fetchPlaylistItems(playlistId: string): Promise<PlaylistItem[]> {
   if (!API_KEY) {
     throw new Error("Manca VITE_YT_API_KEY in .env. Aggiungila e riavvia `npm run dev`.");
   }
 
+  // Cache client-side per ridurre le chiamate API.
+  // TTL: 30 ore (come richiesto)
+  const CACHE_TTL_MS = 30 * 60 * 60 * 1000;
+  const cacheKey = `ytrandom_playlist_cache_v1_${playlistId}`;
+
+  const readCache = (): PlaylistItem[] | null => {
+    try {
+      if (typeof window === "undefined") return null;
+      const raw = window.localStorage.getItem(cacheKey);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw) as { cachedAt: number; items: PlaylistItem[] };
+      if (!parsed?.cachedAt || !Array.isArray(parsed.items)) return null;
+      const age = Date.now() - parsed.cachedAt;
+      if (age > CACHE_TTL_MS) return null;
+      return parsed.items;
+    } catch {
+      return null;
+    }
+  };
+
+  const writeCache = (items: PlaylistItem[]) => {
+    try {
+      if (typeof window === "undefined") return;
+      window.localStorage.setItem(cacheKey, JSON.stringify({ cachedAt: Date.now(), items }));
+    } catch {
+      // ignore
+    }
+  };
+
+  const cached = readCache();
+  if (cached && cached.length > 0) return cached;
+
   // UI: un unico scroll. API: paginazione trasparente per caricare i risultati.
-  const maxPages = 10; // fino a 500 items
+  // 50 items per pagina -> per 1500 servono max 30 pagine.
+  const maxItems = 1500;
   let pageToken: string | undefined = undefined;
   const out: PlaylistItem[] = [];
 
-  for (let page = 0; page < maxPages; page++) {
+  while (out.length < maxItems) {
     const url = new URL("https://www.googleapis.com/youtube/v3/playlistItems");
     url.searchParams.set("part", "snippet");
     url.searchParams.set("maxResults", "50");
@@ -47,6 +81,7 @@ export async function fetchPlaylistItems(playlistId: string): Promise<PlaylistIt
 
     const items = (json?.items ?? []) as any[];
     for (const it of items) {
+      if (out.length >= maxItems) break;
       const sn = it?.snippet;
       const videoId = sn?.resourceId?.videoId as string | undefined;
       if (!videoId) continue;
@@ -76,8 +111,12 @@ export async function fetchPlaylistItems(playlistId: string): Promise<PlaylistIt
     if (!pageToken) break;
   }
 
+  // Salva cache solo se abbiamo risultati
+  if (out.length > 0) writeCache(out);
+
   return out;
 }
+
 
 export function buildEmbedUrl(videoId: string): string {
   const url = new URL(`https://www.youtube-nocookie.com/embed/${videoId}`);
