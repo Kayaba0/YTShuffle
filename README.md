@@ -7,6 +7,7 @@ YTShuffle lets you load any public YouTube playlist and play it in a
 fully randomized order with a clean, modern glass-style interface.
 
 🔗 Live Demo: [YTShuffle](https://ytshuffle.vercel.app/)
+
 📦 Tech Stack: React · Vite · TypeScript · Tailwind · YouTube Iframe API
 
 ------------------------------------------------------------------------
@@ -30,10 +31,6 @@ fully randomized order with a clean, modern glass-style interface.
 You can open a playlist directly via URL:
 
 https://ytshuffle.vercel.app/player?list=PLAYLIST_ID
-
-Example:
-
-https://ytshuffle.vercel.app/player?list=PLPHBRYPZCaPACqzHDCuTEJBPCM-KwLY8u
 
 ✔ Automatically loads\
 ✔ Shuffles on each visit\
