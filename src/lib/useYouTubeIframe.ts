@@ -15,6 +15,7 @@ type Options = {
 type PlayerApi = {
   isReady: boolean;
   isPlaying: boolean;
+  currentTime: number;
   play: () => void;
   pause: () => void;
   toggle: () => void;
@@ -46,6 +47,7 @@ export function useYouTubeIframe(videoId: string, options?: Options): PlayerApi 
 
   const [isReady, setIsReady] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
 
   useEffect(() => {
     onEndedRef.current = options?.onEnded;
@@ -54,11 +56,9 @@ export function useYouTubeIframe(videoId: string, options?: Options): PlayerApi 
 
   useEffect(() => {
     async function init() {
-      // Wait until we have a valid videoId to avoid YouTube loading an unexpected video.
       if (!videoId) return;
       await loadYouTubeIframeApi();
       if (!mountRef.current) return;
-
       if (playerRef.current) return;
 
       playerRef.current = new window.YT.Player(mountRef.current, {
@@ -72,7 +72,6 @@ export function useYouTubeIframe(videoId: string, options?: Options): PlayerApi 
         events: {
           onReady: () => {
             setIsReady(true);
-            // If a videoId was requested before the player was ready, load it now.
             const pending = pendingVideoIdRef.current;
             if (pending) {
               pendingVideoIdRef.current = null;
@@ -84,10 +83,13 @@ export function useYouTubeIframe(videoId: string, options?: Options): PlayerApi 
           onStateChange: (e: any) => {
             if (e.data === 1) setIsPlaying(true);
             if (e.data === 2) setIsPlaying(false);
-            if (e.data === 0) onEndedRef.current?.();
+            if (e.data === 0) {
+              setIsPlaying(false);
+              setCurrentTime(0);
+              onEndedRef.current?.();
+            }
           },
           onError: () => {
-            // Skip immediately if video is unavailable
             onErrorRef.current?.();
           },
         },
@@ -95,8 +97,6 @@ export function useYouTubeIframe(videoId: string, options?: Options): PlayerApi 
     }
 
     init();
-
-    // no cleanup here: we destroy the player only on unmount
   }, [videoId]);
 
   useEffect(() => {
@@ -111,11 +111,12 @@ export function useYouTubeIframe(videoId: string, options?: Options): PlayerApi 
     if (!videoId) return;
     if (!playerRef.current) return;
 
-    // If the player isn\'t ready yet, remember the requested videoId.
     if (!isReady) {
       pendingVideoIdRef.current = videoId;
       return;
     }
+
+    setCurrentTime(0);
 
     try {
       const current = playerRef.current?.getVideoData?.()?.video_id as string | undefined;
@@ -129,16 +130,30 @@ export function useYouTubeIframe(videoId: string, options?: Options): PlayerApi 
     }
   }, [videoId, isReady]);
 
+  useEffect(() => {
+    if (!isReady || !playerRef.current) return;
+
+    const interval = window.setInterval(() => {
+      try {
+        const t = Number(playerRef.current?.getCurrentTime?.() ?? 0);
+        if (Number.isFinite(t)) setCurrentTime(t);
+      } catch {}
+    }, 250);
+
+    return () => window.clearInterval(interval);
+  }, [isReady]);
+
   const api = useMemo<PlayerApi>(() => {
     return {
       isReady,
       isPlaying,
+      currentTime,
       play: () => playerRef.current?.playVideo(),
       pause: () => playerRef.current?.pauseVideo(),
       toggle: () => (isPlaying ? playerRef.current?.pauseVideo() : playerRef.current?.playVideo()),
       mountRef,
     };
-  }, [isReady, isPlaying]);
+  }, [isReady, isPlaying, currentTime]);
 
   return api;
 }
