@@ -123,11 +123,22 @@ export default function Player(props: Props) {
   const syncedLines = useMemo(() => parseSyncedLyrics(lyricsState.syncedLyrics), [lyricsState.syncedLyrics]);
   const activeLyricIndex = useMemo(() => {
     if (!syncedLines.length) return -1;
+
+    const compensatedTime = Math.max(0, yt.currentTime + 0.18);
+    let low = 0;
+    let high = syncedLines.length - 1;
     let idx = -1;
-    for (let i = 0; i < syncedLines.length; i += 1) {
-      if (yt.currentTime >= syncedLines[i].time) idx = i;
-      else break;
+
+    while (low <= high) {
+      const mid = Math.floor((low + high) / 2);
+      if (syncedLines[mid].time <= compensatedTime) {
+        idx = mid;
+        low = mid + 1;
+      } else {
+        high = mid - 1;
+      }
     }
+
     return idx;
   }, [syncedLines, yt.currentTime]);
 

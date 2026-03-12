@@ -81,6 +81,11 @@ export function useYouTubeIframe(videoId: string, options?: Options): PlayerApi 
             }
           },
           onStateChange: (e: any) => {
+            try {
+              const t = Number(playerRef.current?.getCurrentTime?.() ?? 0);
+              if (Number.isFinite(t)) setCurrentTime(t);
+            } catch {}
+
             if (e.data === 1) setIsPlaying(true);
             if (e.data === 2) setIsPlaying(false);
             if (e.data === 0) {
@@ -133,15 +138,40 @@ export function useYouTubeIframe(videoId: string, options?: Options): PlayerApi 
   useEffect(() => {
     if (!isReady || !playerRef.current) return;
 
-    const interval = window.setInterval(() => {
+    let rafId = 0;
+    let intervalId = 0;
+
+    const updateTime = () => {
       try {
         const t = Number(playerRef.current?.getCurrentTime?.() ?? 0);
         if (Number.isFinite(t)) setCurrentTime(t);
       } catch {}
-    }, 250);
+    };
 
-    return () => window.clearInterval(interval);
-  }, [isReady]);
+    const startRafLoop = () => {
+      const tick = () => {
+        updateTime();
+        try {
+          const state = Number(playerRef.current?.getPlayerState?.() ?? -1);
+          if (state === 1) {
+            rafId = window.requestAnimationFrame(tick);
+            return;
+          }
+        } catch {}
+      };
+
+      rafId = window.requestAnimationFrame(tick);
+    };
+
+    updateTime();
+    startRafLoop();
+    intervalId = window.setInterval(updateTime, 400);
+
+    return () => {
+      if (rafId) window.cancelAnimationFrame(rafId);
+      if (intervalId) window.clearInterval(intervalId);
+    };
+  }, [isReady, isPlaying]);
 
   const api = useMemo<PlayerApi>(() => {
     return {
